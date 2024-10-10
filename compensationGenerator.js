@@ -2,12 +2,12 @@ const { faker } = require('@faker-js/faker');
 
 const generateCompensationRecords = (employees) => {
   const compensationRecords = [];
-  const today = new Date();
+  
 
   employees.forEach(employee => {
     const hireDate = new Date(employee.hireDate);
     let currentSalary = faker.number.int({ min: 60000, max: 70000 });
-    
+    const today = employee.terminationDate ? new Date(employee.terminationDate) : new Date();
     // 初始薪資記錄
     compensationRecords.push({
       employeeId: employee.employeeId,

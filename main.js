@@ -10,6 +10,7 @@ const { generatePerformanceRecords } = require('./performanceGenerator');
 const { generateAwardRecords } = require('./awardGenerator');
 const { generateJobHistoryRecords } = require('./jobHistoryGenerator');
 const { generateSkillsRecords } = require('./skillsGenerator');
+const { generateDisciplinaryRecords } = require('./disciplinaryGenerator');
 
 // 確保 output 資料夾存在
 const outputDir = 'output';
@@ -100,6 +101,14 @@ const csvWriters = {
     { id: 'employee_id', title: 'Employee ID' },
     { id: 'skill_name', title: 'Skill Name' },
     { id: 'skill_level', title: 'Skill Level' }
+  ]),
+  disciplinary: createCsvWriter('disciplinary', [
+    { id: 'employee_id', title: 'Employee ID' },
+    { id: 'incident_date', title: 'Incident Date' },
+    { id: 'incident_type', title: 'Incident Type' },
+    { id: 'incident_description', title: 'Incident Description' },
+    { id: 'disciplinary_action_taken', title: 'Disciplinary Action Taken' },
+    { id: 'disciplinary_action_date', title: 'Disciplinary Action Date' }
   ])
 };
 
@@ -116,6 +125,7 @@ function processBatch(batchEmployees, batchIndex) {
   const batchAward = generateAwardRecords(batchEmployees);
   const batchJobHistory = generateJobHistoryRecords(batchEmployees);
   const batchSkills = generateSkillsRecords(batchEmployees);
+  const batchDisciplinary = generateDisciplinaryRecords(batchEmployees);
 
   csvWriters.employees.write(batchEmployees);
   csvWriters.recruitment.write(batchRecruitment);
@@ -127,6 +137,7 @@ function processBatch(batchEmployees, batchIndex) {
   csvWriters.award.write(batchAward);
   csvWriters.jobHistory.write(batchJobHistory);
   csvWriters.skills.write(batchSkills);
+  csvWriters.disciplinary.write(batchDisciplinary);
 
   console.log(`完成處理第 ${batchIndex} 批員工的數據`);
 }
@@ -147,7 +158,7 @@ function processAllEmployees(totalEmployees, batchSize = 10000) {
 
 // 執行主處理函數
 try {
-  processAllEmployees(50000);
+  processAllEmployees(20000);
 } catch (err) {
   console.error('處理過程中發生錯誤:', err);
 }

@@ -24,8 +24,8 @@ const generatePerformanceRecords = (employees) => {
         hireDate
       ));
 
-      // 如果審核日期晚於今天,跳過這一年
-      if (reviewDate > today) break;
+      // 如果審核日期晚於今天或離職日期，跳過這一年
+      if (reviewDate > today || (employee.terminationDate && reviewDate > new Date(employee.terminationDate))) break;
 
       // 選擇一個不同的員工作為審核者
       let reviewer;

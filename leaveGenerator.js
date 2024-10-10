@@ -35,6 +35,11 @@ const generateLeaveRecords = (employees) => {
           applyDate = leaveStart;
         }
 
+        // 确保请假日期不能晚于离职日期
+        if (employee.terminationDate && new Date(employee.terminationDate) < leaveStart) {
+          continue; // 如果请假开始日期晚于离职日期，则跳过这次请假
+        }
+
         const leaveType = faker.helpers.arrayElement(['sick', 'vacation', 'Maternity', 'unpaid']);
         const approvalStatus = faker.number.int({ min: 1, max: 100 }) <= 90 ? 'approved' : faker.helpers.arrayElement(['pending', 'rejected']);
 
