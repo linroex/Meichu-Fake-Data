@@ -9,7 +9,8 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@faker-js/faker": "^9.0.3"
+    "@faker-js/faker": "^9.0.3",
+    "parquetjs": "^0.11.2"
   },
   "dependencies": {
     "@faker-js/faker": "^8.0.2",

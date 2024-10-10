@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const parquet = require('parquetjs');
 const { generateEmployees } = require('./employeeGenerator');
 const { generateRecruitmentRecords } = require('./recruitmentGenerator');
 const { generateOnboardingRecords } = require('./onboardingGenerator');
@@ -18,7 +19,16 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir);
 }
 
-// 創建 CSV 寫入器函數
+// 创建写入器函数
+const createWriter = async (baseName, header, outputFormat) => {
+  if (outputFormat === 'csv') {
+    return createCsvWriter(baseName, header);
+  } else if (outputFormat === 'parquet') {
+    return await createParquetWriter(baseName, header);
+  }
+};
+
+// CSV 写入器函数
 const createCsvWriter = (baseName, header) => {
   const filePath = path.join(outputDir, `${baseName}.csv`);
   const headerRow = header.map(h => h.title).join(',') + '\n';
@@ -31,89 +41,155 @@ const createCsvWriter = (baseName, header) => {
         fileContent += header.map(h => record[h.id]).join(',') + '\n';
       });
       fs.appendFileSync(filePath, fileContent);
+    },
+    end() {} // CSV 不需要结束操作
+  };
+};
+
+// Parquet 写入器函数
+const createParquetWriter = async (baseName, header) => {
+  const schema = new parquet.ParquetSchema(
+    Object.fromEntries(header.map(h => [h.id, getParquetType(h.type, h.optional)]))
+  );
+  const filePath = path.join(outputDir, `${baseName}.parquet`);
+  const writer = await parquet.ParquetWriter.openFile(schema, filePath);
+
+  return {
+    async write(records) {
+      for (const record of records) {
+        const convertedRecord = {};
+        for (const [key, value] of Object.entries(record)) {
+          convertedRecord[key] = value;
+        }
+        await writer.appendRow(convertedRecord);
+      }
+    },
+    async end() {
+      await writer.close();
     }
   };
 };
 
-// 定義所有 CSV 寫入器
-const csvWriters = {
-  employees: createCsvWriter('employees', [
-    { id: 'employeeId', title: 'Employee ID' },
-    { id: 'firstName', title: 'First Name' },
-    { id: 'lastName', title: 'Last Name' },
-    { id: 'dateOfBirth', title: 'Date_Of_Birth' },
-    { id: 'hireDate', title: 'Hire_Date' },
-    { id: 'terminationDate', title: 'Termination_Date' },
-    { id: 'status', title: 'Status' }
-  ]),
-  recruitment: createCsvWriter('recruitment', [
-    { id: 'employeeId', title: 'Employee ID' },
-    { id: 'positionAppliedFor', title: 'Position_Applied_For' },
-    { id: 'applicationDate', title: 'Application_Date' },
-    { id: 'interviewDate', title: 'Interview_Date' },
-    { id: 'status', title: 'Status' }
-  ]),
-  onboarding: createCsvWriter('onboarding', [
-    { id: 'employeeId', title: 'Employee ID' },
-    { id: 'formCompletionStatus', title: 'Form_Completion_Status' },
-    { id: 'orientationCompletion', title: 'Orientation_Completion' },
-    { id: 'mandatoryTrainingStatus', title: 'Mandatory_Training_Status' }
-  ]),
-  compensation: createCsvWriter('compensation', [
-    { id: 'employeeId', title: 'Employee ID' },
-    { id: 'type', title: 'Type' },
-    { id: 'amount', title: 'Amount' },
-    { id: 'effectiveDate', title: 'Effective_Date' }
-  ]),
-  leave: createCsvWriter('leave', [
-    { id: 'employeeId', title: 'Employee ID' },
-    { id: 'startDate', title: 'Start_Date' },
-    { id: 'endDate', title: 'End_Date' },
-    { id: 'applyDate', title: 'Apply_Date' },
-    { id: 'leaveType', title: 'Leave_Type' },
-    { id: 'approvalStatus', title: 'Approval_Status' }
-  ]),
-  training: createCsvWriter('training', [
-    { id: 'employeeId', title: 'Employee ID' },
-    { id: 'trainingName', title: 'Training Name' },
-    { id: 'completionDate', title: 'Completion_Date' },
-    { id: 'expireDate', title: 'Expire_Date' }
-  ]),
-  performance: createCsvWriter('performance', [
-    { id: 'employeeId', title: 'Employee ID' },
-    { id: 'reviewDate', title: 'Review Date' },
-    { id: 'reviewerId', title: 'Reviewer ID' },
-    { id: 'score', title: 'Score' },
-    { id: 'feedback', title: 'Feedback' }
-  ]),
-  award: createCsvWriter('award', [
-    { id: 'employeeId', title: 'Employee ID' },
-    { id: 'awardName', title: 'Award Name' },
-    { id: 'awardDesc', title: 'Award Description' },
-    { id: 'awardDate', title: 'Award Date' }
-  ]),
-  jobHistory: createCsvWriter('job_history', [
-    { id: 'employee_id', title: 'Employee ID' },
-    { id: 'job_title', title: 'Job Title' },
-    { id: 'promote_date', title: 'Promote Date' }
-  ]),
-  skills: createCsvWriter('skills', [
-    { id: 'employee_id', title: 'Employee ID' },
-    { id: 'skill_name', title: 'Skill Name' },
-    { id: 'skill_level', title: 'Skill Level' }
-  ]),
-  disciplinary: createCsvWriter('disciplinary', [
-    { id: 'employee_id', title: 'Employee ID' },
-    { id: 'incident_date', title: 'Incident Date' },
-    { id: 'incident_type', title: 'Incident Type' },
-    { id: 'incident_description', title: 'Incident Description' },
-    { id: 'disciplinary_action_taken', title: 'Disciplinary Action Taken' },
-    { id: 'disciplinary_action_date', title: 'Disciplinary Action Date' }
-  ])
+// 辅助函数：根据指定的类型返回 Parquet 数据类型
+function getParquetType(type, isOptional = false) {
+  let parquetType;
+  switch (type) {
+    case 'STRING':
+      parquetType = { type: 'UTF8' };
+      break;
+    case 'INTEGER':
+      parquetType = { type: 'INT32' };
+      break;
+    case 'FLOAT':
+      parquetType = { type: 'FLOAT' };
+      break;
+    case 'DOUBLE':
+      parquetType = { type: 'DOUBLE' };
+      break;
+    case 'BOOLEAN':
+      parquetType = { type: 'BOOLEAN' };
+      break;
+    case 'DATE':
+      parquetType = { type: 'UTF8' };
+      break;
+    default:
+      parquetType = { type: 'UTF8' }; // 默认使用 UTF8 类型
+  }
+
+  if (isOptional) {
+    parquetType.optional = true;
+  }
+
+  return parquetType;
+}
+
+// 定义所有写入器的函数
+const createWriters = async (outputFormat) => {
+  const writers = {};
+  const writerDefinitions = {
+    employees: [
+      { id: 'employeeId', title: 'Employee ID', type: 'STRING' },
+      { id: 'firstName', title: 'First Name', type: 'STRING' },
+      { id: 'lastName', title: 'Last Name', type: 'STRING' },
+      { id: 'dateOfBirth', title: 'Date_Of_Birth', type: 'DATE' },
+      { id: 'hireDate', title: 'Hire_Date', type: 'DATE' },
+      { id: 'terminationDate', title: 'Termination_Date', type: 'DATE', optional: true },
+      { id: 'status', title: 'Status', type: 'STRING' }
+    ],
+    recruitment: [
+      { id: 'employeeId', title: 'Employee ID', type: 'STRING' },
+      { id: 'positionAppliedFor', title: 'Position_Applied_For', type: 'STRING' },
+      { id: 'applicationDate', title: 'Application_Date', type: 'DATE' },
+      { id: 'interviewDate', title: 'Interview_Date', type: 'DATE' },
+      { id: 'status', title: 'Status', type: 'STRING' }
+    ],
+    onboarding: [
+      { id: 'employeeId', title: 'Employee ID', type: 'STRING' },
+      { id: 'formCompletionStatus', title: 'Form_Completion_Status', type: 'STRING' },
+      { id: 'orientationCompletion', title: 'Orientation_Completion', type: 'BOOLEAN' },
+      { id: 'mandatoryTrainingStatus', title: 'Mandatory_Training_Status', type: 'STRING' }
+    ],
+    compensation: [
+      { id: 'employeeId', title: 'Employee ID', type: 'STRING' },
+      { id: 'type', title: 'Type', type: 'STRING' },
+      { id: 'amount', title: 'Amount', type: 'DOUBLE' },
+      { id: 'effectiveDate', title: 'Effective_Date', type: 'DATE' }
+    ],
+    leave: [
+      { id: 'employeeId', title: 'Employee ID', type: 'STRING' },
+      { id: 'startDate', title: 'Start_Date', type: 'DATE' },
+      { id: 'endDate', title: 'End_Date', type: 'DATE' },
+      { id: 'applyDate', title: 'Apply_Date', type: 'DATE' },
+      { id: 'leaveType', title: 'Leave_Type', type: 'STRING' },
+      { id: 'approvalStatus', title: 'Approval_Status', type: 'STRING' }
+    ],
+    training: [
+      { id: 'employeeId', title: 'Employee ID', type: 'STRING' },
+      { id: 'trainingName', title: 'Training Name', type: 'STRING' },
+      { id: 'completionDate', title: 'Completion_Date', type: 'DATE' },
+      { id: 'expireDate', title: 'Expire_Date', type: 'DATE' }
+    ],
+    performance: [
+      { id: 'employeeId', title: 'Employee ID', type: 'STRING' },
+      { id: 'reviewDate', title: 'Review Date', type: 'DATE' },
+      { id: 'reviewerId', title: 'Reviewer ID', type: 'STRING' },
+      { id: 'score', title: 'Score', type: 'INTEGER' },
+      { id: 'feedback', title: 'Feedback', type: 'STRING' }
+    ],
+    award: [
+      { id: 'employeeId', title: 'Employee ID', type: 'STRING' },
+      { id: 'awardName', title: 'Award Name', type: 'STRING' },
+      { id: 'awardDesc', title: 'Award Description', type: 'STRING' },
+      { id: 'awardDate', title: 'Award Date', type: 'DATE' }
+    ],
+    jobHistory: [
+      { id: 'employee_id', title: 'Employee ID', type: 'STRING' },
+      { id: 'job_title', title: 'Job Title', type: 'STRING' },
+      { id: 'promote_date', title: 'Promote Date', type: 'DATE' }
+    ],
+    skills: [
+      { id: 'employee_id', title: 'Employee ID', type: 'STRING' },
+      { id: 'skill_name', title: 'Skill Name', type: 'STRING' },
+      { id: 'skill_level', title: 'Skill Level', type: 'STRING' }
+    ],
+    disciplinary: [
+      { id: 'employee_id', title: 'Employee ID', type: 'STRING' },
+      { id: 'incident_date', title: 'Incident Date', type: 'DATE' },
+      { id: 'incident_type', title: 'Incident Type', type: 'STRING' },
+      { id: 'incident_description', title: 'Incident Description', type: 'STRING' },
+      { id: 'disciplinary_action_taken', title: 'Disciplinary Action Taken', type: 'STRING' },
+      { id: 'disciplinary_action_date', title: 'Disciplinary Action Date', type: 'DATE' }
+    ]
+  };
+
+  for (const [key, value] of Object.entries(writerDefinitions)) {
+    writers[key] = await createWriter(key, value, outputFormat);
+  }
+  return writers;
 };
 
-// 分批處理函數
-function processBatch(batchEmployees, batchIndex) {
+// 分批处理函数
+async function processBatch(batchEmployees, batchIndex, writers) {
   console.log(`開始處理第 ${batchIndex} 批 ${batchEmployees.length} 名員工的數據...`);
 
   const batchRecruitment = generateRecruitmentRecords(batchEmployees);
@@ -127,38 +203,51 @@ function processBatch(batchEmployees, batchIndex) {
   const batchSkills = generateSkillsRecords(batchEmployees);
   const batchDisciplinary = generateDisciplinaryRecords(batchEmployees);
 
-  csvWriters.employees.write(batchEmployees);
-  csvWriters.recruitment.write(batchRecruitment);
-  csvWriters.onboarding.write(batchOnboarding);
-  csvWriters.compensation.write(batchCompensation);
-  csvWriters.leave.write(batchLeave);
-  csvWriters.training.write(batchTraining);
-  csvWriters.performance.write(batchPerformance);
-  csvWriters.award.write(batchAward);
-  csvWriters.jobHistory.write(batchJobHistory);
-  csvWriters.skills.write(batchSkills);
-  csvWriters.disciplinary.write(batchDisciplinary);
+  await writers.employees.write(batchEmployees);
+  await writers.recruitment.write(batchRecruitment);
+  await writers.onboarding.write(batchOnboarding);
+  await writers.compensation.write(batchCompensation);
+  await writers.leave.write(batchLeave);
+  await writers.training.write(batchTraining);
+  await writers.performance.write(batchPerformance);
+  await writers.award.write(batchAward);
+  await writers.jobHistory.write(batchJobHistory);
+  await writers.skills.write(batchSkills);
+  await writers.disciplinary.write(batchDisciplinary);
 
   console.log(`完成處理第 ${batchIndex} 批員工的數據`);
 }
 
-// 主處理函數
-function processAllEmployees(totalEmployees, batchSize = 10000) {
-  console.log('開始生成員工數據...');
+// 主处理函数
+async function processAllEmployees(totalEmployees, batchSize = 10000, outputFormat = 'csv') {
+  console.log(`開始生成員工數據，輸出格式：${outputFormat}...`);
+  
+  const writers = await createWriters(outputFormat);
   
   for (let i = 0, batchIndex = 1; i < totalEmployees; i += batchSize, batchIndex++) {
     console.log(`生成第 ${i + 1} 到 ${Math.min(i + batchSize, totalEmployees)} 名員工的數據...`);
     const batchEmployees = generateEmployees(Math.min(batchSize, totalEmployees - i));
-    processBatch(batchEmployees, batchIndex);
+    await processBatch(batchEmployees, batchIndex, writers);
     console.log(`已處理 ${Math.min(i + batchSize, totalEmployees)} / ${totalEmployees} 名員工`);
   }
 
-  console.log('所有數據已成功生成並寫入 CSV 文件。');
+  // 关闭所有写入器
+  for (const writer of Object.values(writers)) {
+    await writer.end();
+  }
+
+  console.log(`所有數據已成功生成並寫入 ${outputFormat.toUpperCase()} 文件。`);
 }
 
-// 執行主處理函數
-try {
-  processAllEmployees(20000);
-} catch (err) {
-  console.error('處理過程中發生錯誤:', err);
-}
+// 执行主处理函数
+(async () => {
+  try {
+    const outputFormat = process.argv[2] || 'csv'; // 从命令行参数获取输出格式，默认为 CSV
+    if (outputFormat !== 'csv' && outputFormat !== 'parquet') {
+      throw new Error('Invalid output format. Please use "csv" or "parquet".');
+    }
+    await processAllEmployees(500, 10000, outputFormat);
+  } catch (err) {
+    console.error('處理過程中發生錯誤:', err);
+  }
+})();
