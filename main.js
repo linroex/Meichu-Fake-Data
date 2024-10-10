@@ -8,6 +8,8 @@ const { generateLeaveRecords } = require('./leaveGenerator');
 const { generateTrainingRecords } = require('./trainingGenerator');
 const { generatePerformanceRecords } = require('./performanceGenerator');
 const { generateAwardRecords } = require('./awardGenerator');
+const { generateJobHistoryRecords } = require('./jobHistoryGenerator');
+const { generateSkillsRecords } = require('./skillsGenerator');
 
 // 確保 output 資料夾存在
 const outputDir = 'output';
@@ -88,6 +90,16 @@ const csvWriters = {
     { id: 'awardName', title: 'Award Name' },
     { id: 'awardDesc', title: 'Award Description' },
     { id: 'awardDate', title: 'Award Date' }
+  ]),
+  jobHistory: createCsvWriter('job_history', [
+    { id: 'employee_id', title: 'Employee ID' },
+    { id: 'job_title', title: 'Job Title' },
+    { id: 'promote_date', title: 'Promote Date' }
+  ]),
+  skills: createCsvWriter('skills', [
+    { id: 'employee_id', title: 'Employee ID' },
+    { id: 'skill_name', title: 'Skill Name' },
+    { id: 'skill_level', title: 'Skill Level' }
   ])
 };
 
@@ -102,6 +114,8 @@ function processBatch(batchEmployees, batchIndex) {
   const batchTraining = generateTrainingRecords(batchEmployees);
   const batchPerformance = generatePerformanceRecords(batchEmployees);
   const batchAward = generateAwardRecords(batchEmployees);
+  const batchJobHistory = generateJobHistoryRecords(batchEmployees);
+  const batchSkills = generateSkillsRecords(batchEmployees);
 
   csvWriters.employees.write(batchEmployees);
   csvWriters.recruitment.write(batchRecruitment);
@@ -111,12 +125,14 @@ function processBatch(batchEmployees, batchIndex) {
   csvWriters.training.write(batchTraining);
   csvWriters.performance.write(batchPerformance);
   csvWriters.award.write(batchAward);
+  csvWriters.jobHistory.write(batchJobHistory);
+  csvWriters.skills.write(batchSkills);
 
   console.log(`完成處理第 ${batchIndex} 批員工的數據`);
 }
 
 // 主處理函數
-function processAllEmployees(totalEmployees, batchSize = 5000) {
+function processAllEmployees(totalEmployees, batchSize = 10000) {
   console.log('開始生成員工數據...');
   
   for (let i = 0, batchIndex = 1; i < totalEmployees; i += batchSize, batchIndex++) {
@@ -131,7 +147,7 @@ function processAllEmployees(totalEmployees, batchSize = 5000) {
 
 // 執行主處理函數
 try {
-  processAllEmployees(150000);
+  processAllEmployees(50000);
 } catch (err) {
   console.error('處理過程中發生錯誤:', err);
 }
