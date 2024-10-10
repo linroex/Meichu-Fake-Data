@@ -43,7 +43,7 @@ const generateEmployees = (count) => {
     }
     
     const employee = {
-      employeeId: generateEmployeeId(),
+      employeeId: null, // 暂时设为 null，稍后会根据 hireDate 排序后设置
       firstName: faker.person.firstName(),
       lastName: faker.person.lastName(),
       dateOfBirth: dateOfBirth.toISOString().split('T')[0],
@@ -54,6 +54,15 @@ const generateEmployees = (count) => {
 
     employees.push(employee);
   }
+
+  // 根据 hireDate 排序员工
+  employees.sort((a, b) => new Date(a.hireDate) - new Date(b.hireDate));
+
+  // 分配 employeeId
+  employees.forEach(employee => {
+    employee.employeeId = generateEmployeeId();
+  });
+
   return employees;
 };
 
