@@ -24,32 +24,15 @@ const generateEmployees = (count) => {
     minHireDate.setFullYear(minHireDate.getFullYear() + 22);
     const hireDate = generateDate(minHireDate, new Date());
     
-    let status = 'Active';
-    let terminationDate = null;
-
-    // 3% 的離職率
-    if (faker.number.int(100) < 3) {
-      status = 'Terminated';
-      // 確保離職日期至少在入職日期一年後，且不晚於當前日期
-      const minTerminationDate = new Date(hireDate);
-      minTerminationDate.setFullYear(minTerminationDate.getFullYear() + 1);
-      const maxTerminationDate = new Date(); // 當前日期
-      if (minTerminationDate <= maxTerminationDate) {
-        terminationDate = generateDate(minTerminationDate, maxTerminationDate);
-      } else {
-        // 如果最小離職日期晚於當前日期，則將狀態設回 'Active'
-        status = 'Active';
-      }
-    }
-    
     const employee = {
       employeeId: null, // 暂时设为 null，稍后会根据 hireDate 排序后设置
       firstName: faker.person.firstName(),
       lastName: faker.person.lastName(),
       dateOfBirth: dateOfBirth.toISOString().split('T')[0],
       hireDate: hireDate.toISOString().split('T')[0],
-      status: status,
-      terminationDate: terminationDate ? terminationDate.toISOString().split('T')[0] : null
+      status: 'Active',
+      terminationDate: null,
+      terminationReason: null
     };
 
     employees.push(employee);
@@ -66,4 +49,20 @@ const generateEmployees = (count) => {
   return employees;
 };
 
-module.exports = { generateEmployees };
+// 添加一个新函数来处理 3% 的随机离职
+const processRandomTerminations = (employees) => {
+  const currentDate = new Date();
+  employees.forEach(employee => {
+    if (employee.status === 'Active' && faker.number.int(100) < 3) {
+      const minTerminationDate = new Date(employee.hireDate);
+      minTerminationDate.setFullYear(minTerminationDate.getFullYear() + 1);
+      if (minTerminationDate <= currentDate) {
+        employee.status = 'Terminated';
+        employee.terminationDate = generateDate(minTerminationDate, currentDate).toISOString().split('T')[0];
+        employee.terminationReason = 'Random Termination';
+      }
+    }
+  });
+};
+
+module.exports = { generateEmployees, processRandomTerminations };

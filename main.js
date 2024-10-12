@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const parquet = require('parquetjs');
-const { generateEmployees } = require('./employeeGenerator');
+const { generateEmployees, processRandomTerminations } = require('./employeeGenerator');
 const { generateRecruitmentRecords } = require('./recruitmentGenerator');
 const { generateOnboardingRecords } = require('./onboardingGenerator');
 const { generateCompensationRecords } = require('./compensationGenerator');
@@ -31,14 +31,26 @@ const createWriter = async (baseName, header, outputFormat) => {
 // CSV 写入器函数
 const createCsvWriter = (baseName, header) => {
   const filePath = path.join(outputDir, `${baseName}.csv`);
-  const headerRow = header.map(h => h.title).join(',') + '\n';
+  const headerRow = header.map(h => `"${h.title}"`).join(',') + '\n';
   fs.writeFileSync(filePath, headerRow);
 
   return {
     write(records) {
       let fileContent = '';
       records.forEach(record => {
-        fileContent += header.map(h => record[h.id]).join(',') + '\n';
+        fileContent += header.map(h => {
+          const value = record[h.id];
+          // 如果值是 null 或 undefined，返回空字符串
+          if (value === null || value === undefined) {
+            return '""';
+          }
+          // 对字符串类型的值进行特殊处理，将双引号替换为两个双引号
+          if (typeof value === 'string') {
+            return `"${value.replace(/"/g, '""')}"`;
+          }
+          // 其他类型直接用双引号括起来
+          return `"${value}"`;
+        }).join(',') + '\n';
       });
       fs.appendFileSync(filePath, fileContent);
     },
@@ -59,7 +71,11 @@ const createParquetWriter = async (baseName, header) => {
       for (const record of records) {
         const convertedRecord = {};
         for (const [key, value] of Object.entries(record)) {
-          convertedRecord[key] = value;
+          if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            convertedRecord[key] = new Date(value);
+          } else {
+            convertedRecord[key] = value;
+          }
         }
         await writer.appendRow(convertedRecord);
       }
@@ -90,7 +106,7 @@ function getParquetType(type, isOptional = false) {
       parquetType = { type: 'BOOLEAN' };
       break;
     case 'DATE':
-      parquetType = { type: 'UTF8' };
+      parquetType = { type: 'TIMESTAMP_MILLIS' };
       break;
     default:
       parquetType = { type: 'UTF8' }; // 默认使用 UTF8 类型
@@ -192,6 +208,10 @@ const createWriters = async (outputFormat) => {
 async function processBatch(batchEmployees, batchIndex, writers) {
   console.log(`開始處理第 ${batchIndex} 批 ${batchEmployees.length} 名員工的數據...`);
 
+  // 首先处理随机离职
+  processRandomTerminations(batchEmployees);
+
+  // 然后生成所有其他记录，包括纪律处分记录
   const batchRecruitment = generateRecruitmentRecords(batchEmployees);
   const batchOnboarding = generateOnboardingRecords(batchEmployees);
   const batchCompensation = generateCompensationRecords(batchEmployees);
@@ -246,7 +266,7 @@ async function processAllEmployees(totalEmployees, batchSize = 10000, outputForm
     if (outputFormat !== 'csv' && outputFormat !== 'parquet') {
       throw new Error('Invalid output format. Please use "csv" or "parquet".');
     }
-    await processAllEmployees(500, 10000, outputFormat);
+    await processAllEmployees(500, 1000, outputFormat);
   } catch (err) {
     console.error('處理過程中發生錯誤:', err);
   }

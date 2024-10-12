@@ -55,7 +55,18 @@ function getDisciplinaryAction(incidentType) {
 }
 
 function generateDisciplinaryRecord(employee, year) {
-  const incidentType = faker.helpers.arrayElement(incidentTypes);
+  let incidentType;
+  const randomNumber = faker.number.int({ min: 1, max: 100 });
+  
+  if (randomNumber <= 60) {
+    incidentType = 'Verbal Warning';
+  } else if (randomNumber <= 85) {
+    incidentType = 'Written Warning';
+  } else if (randomNumber <= 95) {
+    incidentType = 'Suspension';
+  } else {
+    incidentType = 'Termination';
+  }
   
   // 确定事件日期的范围
   const yearStart = new Date(`${year}-01-01`);
@@ -69,7 +80,7 @@ function generateDisciplinaryRecord(employee, year) {
     latestDate.getTime()
   ));
 
-  return {
+  const record = {
     employee_id: employee.employeeId,
     incident_date: incidentDate.toISOString().split('T')[0],
     incident_type: incidentType,
@@ -77,6 +88,12 @@ function generateDisciplinaryRecord(employee, year) {
     disciplinary_action_taken: faker.helpers.arrayElement(getDisciplinaryAction(incidentType)),
     disciplinary_action_date: actionDate.toISOString().split('T')[0]
   };
+
+  if (incidentType === 'Termination') {
+    record.isTermination = true;
+  }
+
+  return record;
 }
 
 function generateDisciplinaryRecords(employees) {
@@ -92,7 +109,16 @@ function generateDisciplinaryRecords(employees) {
     // 对每年都有 5% 的概率生成违规记录
     for (let year = employeeStartYear; year <= employeeEndYear; year++) {
       if (faker.number.int({ min: 1, max: 100 }) <= 5) {
-        allDisciplinaryRecords.push(generateDisciplinaryRecord(employee, year));
+        const record = generateDisciplinaryRecord(employee, year);
+        allDisciplinaryRecords.push(record);
+        
+        // 如果是 Termination，更新员工的 terminationDate
+        if (record.isTermination && employee.status === 'Active') {
+          employee.terminationDate = record.disciplinary_action_date;
+          employee.status = 'Terminated';
+          employee.terminationReason = 'Disciplinary Termination';
+          break; // 终止后不再生成更多记录
+        }
       }
     }
   }
